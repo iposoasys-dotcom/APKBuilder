@@ -13,9 +13,15 @@ import androidx.compose.ui.unit.dp
 import com.example.apkbuilder.editor.ProjectManager
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { NewProjectScreen() }
+
+        setContent {
+            MaterialTheme {
+                NewProjectScreen()
+            }
+        }
     }
 
     @Composable
@@ -24,59 +30,86 @@ class MainActivity : ComponentActivity() {
         var pkg by remember { mutableStateOf("com.example.myapp") }
         var language by remember { mutableStateOf("kotlin") }
 
-        MaterialTheme {
-            Column(Modifier.fillMaxSize().padding(20.dp)) {
-                Text("APK Builder 2.0", style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(16.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp)
+        ) {
+            Text(
+                text = "APK Builder 2.0",
+                style = MaterialTheme.typography.headlineMedium
+            )
 
-                OutlinedTextField(
-                    name, { name = it },
-                    label = { Text("App name") },
-                    modifier = Modifier.fillMaxWidth()
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("App name") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = pkg,
+                onValueChange = { pkg = it },
+                label = { Text("Package name") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Language")
+
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = language == "kotlin",
+                    onClick = { language = "kotlin" }
                 )
-                Spacer(Modifier.height(8.dp))
 
-                OutlinedTextField(
-                    pkg, { pkg = it },
-                    label = { Text("Package name") },
-                    modifier = Modifier.fillMaxWidth()
+                Text("Kotlin")
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                RadioButton(
+                    selected = language == "java",
+                    onClick = { language = "java" }
                 )
 
-                Spacer(Modifier.height(12.dp))
-                Text("Language")
+                Text("Java")
+            }
 
-                Row {
-                    RadioButton(language == "kotlin") { language = "kotlin" }
-                    Text("Kotlin", Modifier.padding(top = 12.dp))
-                    Spacer(Modifier.width(16.dp))
-                    RadioButton(language == "java") { language = "java" }
-                    Text("Java", Modifier.padding(top = 12.dp))
-                }
+            Spacer(modifier = Modifier.height(16.dp))
 
-                Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    try {
+                        val project = ProjectManager(this@MainActivity)
+                            .createProject(name, pkg, language)
 
-                Button(
-                    Modifier.fillMaxWidth(),
-                    onClick = {
-                        try {
-                            val project = ProjectManager(this@MainActivity)
-                                .createProject(name, pkg, language)
-
-                            startActivity(
-                                Intent(this@MainActivity, IDEActivity::class.java)
-                                    .putExtra("project", project.absolutePath)
-                            )
-                        } catch (e: Exception) {
-                            Toast.makeText(
+                        startActivity(
+                            Intent(
                                 this@MainActivity,
-                                e.message ?: "Error",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
+                                IDEActivity::class.java
+                            ).putExtra(
+                                "project",
+                                project.absolutePath
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            e.message ?: "Error",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
-                ) {
-                    Text("Create Project")
-                }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Create Project")
             }
         }
     }
