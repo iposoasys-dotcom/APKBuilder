@@ -15,5 +15,8 @@
             </intent-filter>
         </activity>
         <activity android:name=".compatibility.CompatibilityActivity" android:exported="false" />
+        <activity android:name=".build.BuildPreviewActivity" android:exported="false" />
+        <activity android:name=".build.BuildActivity" android:exported="false" />
+        <activity android:name=".ProjectLibraryActivity" android:exported="false" />
     </application>
 </manifest>

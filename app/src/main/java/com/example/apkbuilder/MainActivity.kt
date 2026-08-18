@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.apkbuilder.compatibility.CompatibilityActivity
+import com.example.apkbuilder.ProjectLibraryActivity
 import com.example.apkbuilder.editor.ProjectManager
 
 class MainActivity : ComponentActivity() {
@@ -207,6 +208,23 @@ class MainActivity : ComponentActivity() {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
+                OutlinedButton(
+                    onClick = {
+                        startActivity(
+                            Intent(
+                                this@MainActivity,
+                                ProjectLibraryActivity::class.java
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Project Library")
+                }
+
+                Spacer(
+                    modifier = Modifier.height(10.dp)
+                )
                 Text("Device Compatibility Test")
             }
         }

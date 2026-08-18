@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.apkbuilder.build.BuildManager
 import com.example.apkbuilder.build.LocalBuildEngine
+import com.example.apkbuilder.build.BuildPreviewActivity
 import com.example.apkbuilder.editor.CodeEditor
 import com.example.apkbuilder.editor.ProjectExplorer
 import com.example.apkbuilder.editor.ProjectFile
@@ -111,17 +112,15 @@ class IDEActivity : ComponentActivity() {
 
                         try {
 
+                            startActivity(
+                                android.content.Intent(
+                                    this@IDEActivity,
+                                    BuildPreviewActivity::class.java
+                                ).apply {
+                                    putExtra("project", project.absolutePath)
+                                }
+                            )
                             val engine =
-                                LocalBuildEngine(
-                                    applicationContext.filesDir
-                                )
-
-                            val result =
-                                engine.build(project)
-
-                            status = result.message
-
-                            Toast.makeText(
                                 this@IDEActivity,
                                 result.message,
                                 Toast.LENGTH_LONG
