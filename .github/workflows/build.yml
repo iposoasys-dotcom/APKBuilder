@@ -1,4 +1,4 @@
-name: Build APKBuilder v2
+name: APKBuilder v2 - Build APK
 
 on:
   push:
@@ -11,6 +11,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: apkbuilder-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -30,30 +34,56 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
-
-      - name: Show environment
+      - name: Install Android SDK components
         run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Check project
+        run: |
+          echo "===== PROJECT ====="
+          pwd
+          echo "===== JAVA ====="
           java -version
+          echo "===== GRADLE ====="
+          chmod +x ./gradlew
           ./gradlew --version
-          adb version || true
+          echo "===== ANDROID SDK ====="
+          echo "$ANDROID_HOME"
+          sdkmanager --list_installed | head -80
+          echo "===== SOURCE FILES ====="
+          find app/src/main -type f | sort
+
+      - name: Clean build
+        run: ./gradlew clean --no-daemon
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Verify APK
         run: |
-          echo "Generated APK files:"
+          echo "===== GENERATED APK ====="
           find app/build/outputs/apk -type f -name "*.apk" -print
+          test -n "$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: APKBuilder-v2-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## APKBuilder v2 Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build finished with status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### APK files" >> "$GITHUB_STEP_SUMMARY"
+          find app/build/outputs/apk -type f -name "*.apk" -print >> "$GITHUB_STEP_SUMMARY" || true
