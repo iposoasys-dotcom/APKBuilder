@@ -8,10 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
@@ -38,16 +36,21 @@ class IDEActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val path = intent.getStringExtra("project")
+        val projectPath = intent.getStringExtra("project")
 
-        if (path == null) {
+        if (projectPath.isNullOrBlank()) {
+            Toast.makeText(
+                this,
+                "Project path missing",
+                Toast.LENGTH_LONG
+            ).show()
             finish()
             return
         }
 
         setContent {
             MaterialTheme {
-                EditorScreen(File(path))
+                EditorScreen(File(projectPath))
             }
         }
     }
@@ -55,15 +58,17 @@ class IDEActivity : ComponentActivity() {
     @Composable
     private fun EditorScreen(project: File) {
 
-        val manager = remember {
+        val projectManager = remember {
             ProjectManager(this)
         }
 
         var files by remember(project.absolutePath) {
-            mutableStateOf(manager.listFiles(project))
+            mutableStateOf(
+                projectManager.listFiles(project)
+            )
         }
 
-        var selected by remember {
+        var selectedFile by remember {
             mutableStateOf<ProjectFile?>(null)
         }
 
@@ -86,7 +91,10 @@ class IDEActivity : ComponentActivity() {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
 
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
                     Text(
                         text = project.name,
                         style = MaterialTheme.typography.titleLarge
@@ -101,19 +109,36 @@ class IDEActivity : ComponentActivity() {
                 Button(
                     onClick = {
 
-                        val engine =
-                            LocalBuildEngine(applicationContext.filesDir)
+                        try {
 
-                        val result =
-                            engine.build(project)
+                            val engine =
+                                LocalBuildEngine(
+                                    applicationContext.filesDir
+                                )
 
-                        status = result.message
+                            val result =
+                                engine.build(project)
 
-                        Toast.makeText(
-                            this@IDEActivity,
-                            result.message,
-                            Toast.LENGTH_LONG
-                        ).show()
+                            status = result.message
+
+                            Toast.makeText(
+                                this@IDEActivity,
+                                result.message,
+                                Toast.LENGTH_LONG
+                            ).show()
+
+                        } catch (e: Exception) {
+
+                            status =
+                                e.message
+                                    ?: "Build failed"
+
+                            Toast.makeText(
+                                this@IDEActivity,
+                                status,
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 ) {
                     Text("Build")
@@ -123,26 +148,35 @@ class IDEActivity : ComponentActivity() {
             HorizontalDivider()
 
             Row(
-                modifier = Modifier
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
             ) {
 
                 Box(
-                    modifier = Modifier
-                        .width(240.dp)
+                    modifier = Modifier.width(240.dp)
                 ) {
 
                     ProjectExplorer(
                         files = files,
-                        onFileClick = { file ->
+                        onFileClick = { projectFile ->
 
                             try {
-                                code = file.file.readText()
-                                selected = file
-                                status = "Opened ${file.relativePath}"
+
+                                if (!projectFile.isDirectory) {
+
+                                    code =
+                                        projectFile.file.readText()
+
+                                    selectedFile =
+                                        projectFile
+
+                                    status =
+                                        "Opened ${projectFile.relativePath}"
+                                }
+
                             } catch (e: Exception) {
+
                                 status =
-                                    "Cannot open file: ${
+                                    "Open failed: ${
                                         e.message ?: "unknown error"
                                     }"
                             }
@@ -156,7 +190,7 @@ class IDEActivity : ComponentActivity() {
                     modifier = Modifier.weight(1f)
                 ) {
 
-                    val file = selected
+                    val file = selectedFile
 
                     if (file != null) {
 
@@ -167,7 +201,9 @@ class IDEActivity : ComponentActivity() {
 
                                 try {
 
-                                    file.file.writeText(newCode)
+                                    file.file.writeText(
+                                        newCode
+                                    )
 
                                     code = newCode
 
@@ -175,13 +211,16 @@ class IDEActivity : ComponentActivity() {
                                         "Saved ${file.relativePath}"
 
                                     files =
-                                        manager.listFiles(project)
+                                        projectManager.listFiles(
+                                            project
+                                        )
 
                                 } catch (e: Exception) {
 
                                     status =
                                         "Save failed: ${
-                                            e.message ?: "unknown error"
+                                            e.message
+                                                ?: "unknown error"
                                         }"
                                 }
                             }
@@ -196,25 +235,27 @@ class IDEActivity : ComponentActivity() {
                         ) {
 
                             Text(
-                                text = "Select a file from Project Explorer"
-                            )
-
-                            Spacer(
-                                modifier = Modifier.height(12.dp)
-                            )
-
-                            Text(
-                                text =
-                                    "Build mode: ${
-                                        BuildManager.preferredMode()
-                                    }"
+                                text = "Select a file"
                             )
 
                             Text(
                                 text =
                                     "Architecture: ${
                                         BuildManager.architecture()
-                                    }"
+                                    }",
+                                modifier = Modifier.padding(
+                                    top = 12.dp
+                                )
+                            )
+
+                            Text(
+                                text =
+                                    "Build mode: ${
+                                        BuildManager.preferredMode()
+                                    }",
+                                modifier = Modifier.padding(
+                                    top = 4.dp
+                                )
                             )
                         }
                     }
