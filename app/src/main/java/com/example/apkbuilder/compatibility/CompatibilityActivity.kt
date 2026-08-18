@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,185 +43,148 @@ class CompatibilityActivity : ComponentActivity() {
     private fun CompatibilityScreen() {
 
         var report by remember {
-            mutableStateOf<CompatibilityReport?>(null)
-        }
-
-        LaunchedEffect(Unit) {
-            report =
+            mutableStateOf(
                 CompatibilityChecker.check(this@CompatibilityActivity)
+            )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.Top
+                .padding(16.dp)
         ) {
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+
+                Text(
+                    text = "Device Compatibility",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                TextButton(
+                    onClick = {
+                        report =
+                            CompatibilityChecker.check(
+                                this@CompatibilityActivity
+                            )
+                    }
+                ) {
+                    Text("Refresh")
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            val headline =
+                if (report.localBuildReady) {
+                    "🟢 Local build ready"
+                } else {
+                    "🟡 Device compatible — toolchain required"
+                }
+
             Text(
-                text = "Device Compatibility",
-                style = MaterialTheme.typography.headlineMedium
+                text = headline,
+                style = MaterialTheme.typography.titleMedium
             )
 
             Spacer(
                 modifier = Modifier.height(12.dp)
             )
 
-            val r = report
+            HorizontalDivider()
 
-            if (r == null) {
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
 
-                Text("Testing device...")
+            LazyColumn(
+                modifier = Modifier.weight(1f)
+            ) {
 
-            } else {
-
-                Text(
-                    text = r.deviceName,
-                    style = MaterialTheme.typography.titleLarge
-                )
-
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                HorizontalDivider()
-
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                StatusRow(
-                    "64-bit Android",
-                    r.is64Bit
-                )
-
-                StatusRow(
-                    "ARM64 (arm64-v8a)",
-                    r.arm64
-                )
-
-                StatusRow(
-                    "Architecture",
-                    r.architectureOk
-                )
-
-                StatusRow(
-                    "RAM: ${r.ramMb} MB",
-                    r.ramOk
-                )
-
-                StatusRow(
-                    "Free storage: ${r.freeStorageMb} MB",
-                    r.storageOk
-                )
-
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                Text(
-                    "Android ${r.androidVersion} (SDK ${r.sdk})"
-                )
-
-                Text(
-                    "Primary ABI: ${r.primaryAbi}"
-                )
-
-                Spacer(
-                    modifier = Modifier.height(20.dp)
-                )
-
-                if (r.compatible) {
-
-                    Text(
-                        text = "DEVICE HARDWARE: COMPATIBLE",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-                    Text(
-                        "The phone meets APKBuilder's minimum hardware requirements."
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-                    Text(
-                        "Local compiler status: NOT INSTALLED"
-                    )
-
-                } else {
-
-                    Text(
-                        text = "DEVICE: NOT READY",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-                    Text(
-                        "The required hardware/storage conditions are not currently satisfied."
-                    )
+                items(report.items) { item ->
+                    CompatibilityCard(item)
                 }
 
-                Spacer(
-                    modifier = Modifier.height(20.dp)
-                )
+                item {
+                    Spacer(
+                        modifier = Modifier.height(12.dp)
+                    )
 
-                Button(
-                    onClick = {
-                        report =
-                            CompatibilityChecker.check(
-                                this@CompatibilityActivity
-                            )
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Run Test Again")
-                }
+                    Button(
+                        onClick = {
+                            report =
+                                CompatibilityChecker.check(
+                                    this@CompatibilityActivity
+                                )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Run Compatibility Test Again")
+                    }
 
-                Spacer(
-                    modifier = Modifier.height(8.dp)
-                )
-
-                Button(
-                    onClick = {
-                        finish()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Back")
+                    Spacer(
+                        modifier = Modifier.height(20.dp)
+                    )
                 }
             }
         }
     }
 
     @Composable
-    private fun StatusRow(
-        label: String,
-        passed: Boolean
+    private fun CompatibilityCard(
+        item: CompatibilityItem
     ) {
 
-        Row(
+        val icon =
+            when (item.state) {
+                CheckState.PASS -> "✓"
+                CheckState.WARNING -> "!"
+                CheckState.FAIL -> "✕"
+            }
+
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 5.dp)
+                .padding(vertical = 4.dp)
         ) {
 
-            Text(
-                text = if (passed) "✓ " else "✗ ",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Column(
+                modifier = Modifier.padding(14.dp)
+            ) {
 
-            Text(
-                text = label
-            )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+
+                    Text(
+                        text = "$icon  ${item.name}",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Text(
+                        text = item.value,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                if (item.details.isNotBlank()) {
+
+                    Spacer(
+                        modifier = Modifier.height(5.dp)
+                    )
+
+                    Text(
+                        text = item.details,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
     }
 }
