@@ -35,26 +35,40 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Install Android SDK components
+      - name: Accept Android SDK licenses
+        shell: bash
         run: |
-          sdkmanager --install \
+          set -e
+          yes | sdkmanager --licenses >/tmp/sdk-licenses.log 2>&1
+          echo "Android SDK licenses accepted."
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -e
+          sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
-          yes | sdkmanager --licenses >/dev/null || true
 
       - name: Check project
+        shell: bash
         run: |
+          set -e
           echo "===== PROJECT ====="
           pwd
+
           echo "===== JAVA ====="
           java -version
+
           echo "===== GRADLE ====="
           chmod +x ./gradlew
           ./gradlew --version
+
           echo "===== ANDROID SDK ====="
           echo "$ANDROID_HOME"
           sdkmanager --list_installed | head -80
+
           echo "===== SOURCE FILES ====="
           find app/src/main -type f | sort
 
@@ -65,7 +79,9 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Verify APK
+        shell: bash
         run: |
+          set -e
           echo "===== GENERATED APK ====="
           find app/build/outputs/apk -type f -name "*.apk" -print
           test -n "$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
@@ -80,6 +96,7 @@ jobs:
 
       - name: Build summary
         if: always()
+        shell: bash
         run: |
           echo "## APKBuilder v2 Build" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
