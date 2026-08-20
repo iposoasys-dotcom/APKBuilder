@@ -1,0 +1,209 @@
+name: Build ARM64 Android Toolchain
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-toolchain:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y curl unzip zip gzip file
+
+      - name: Create directories
+        run: |
+          set -eux
+          rm -rf toolchain-build
+          mkdir -p toolchain-build/toolchain
+          mkdir -p toolchain-build/extract
+
+      - name: Download ARM64 Android build tools
+        run: |
+          set -eux
+          BASE="https://github.com/Commit451/android-arm-build-tools/releases/download/35.0.0"
+
+          curl -L --fail --retry 5 \
+            "$BASE/build-tools-35.0.0-arm64-v8a.zip" \
+            -o /tmp/build-tools.zip
+
+          unzip -q /tmp/build-tools.zip \
+            -d toolchain-build/extract
+
+          find toolchain-build/extract -type f -name aapt2 \
+            -exec cp {} toolchain-build/toolchain/aapt2 \;
+
+          find toolchain-build/extract -type f -name zipalign \
+            -exec cp {} toolchain-build/toolchain/zipalign \;
+
+          find toolchain-build/extract -type f -name aidl \
+            -exec cp {} toolchain-build/toolchain/aidl \;
+
+          chmod 755 \
+            toolchain-build/toolchain/aapt2 \
+            toolchain-build/toolchain/zipalign \
+            toolchain-build/toolchain/aidl
+
+      - name: Download ARM64 JDK 17
+        run: |
+          set -eux
+
+          mkdir -p toolchain-build/toolchain/jdk
+
+          curl -L --fail --retry 5 \
+            "https://api.adoptium.net/v3/binary/latest/17/ga/linux/aarch64/jdk/hotspot/normal/eclipse" \
+            -o /tmp/jdk.tar.gz
+
+          mkdir -p /tmp/jdk
+
+          tar -xzf /tmp/jdk.tar.gz \
+            -C /tmp/jdk
+
+          JDK_DIR="$(find /tmp/jdk -mindepth 1 -maxdepth 1 -type d | head -1)"
+
+          test -n "$JDK_DIR"
+
+          cp -a "$JDK_DIR"/. \
+            toolchain-build/toolchain/jdk/
+
+          chmod 755 \
+            toolchain-build/toolchain/jdk/bin/java
+
+      - name: Verify ARM64 native binaries
+        run: |
+          set -eux
+
+          file toolchain-build/toolchain/aapt2
+          file toolchain-build/toolchain/zipalign
+          file toolchain-build/toolchain/aidl
+          file toolchain-build/toolchain/jdk/bin/java
+
+          file toolchain-build/toolchain/aapt2 \
+            | grep -Ei "aarch64|arm64"
+
+          file toolchain-build/toolchain/zipalign \
+            | grep -Ei "aarch64|arm64"
+
+          file toolchain-build/toolchain/aidl \
+            | grep -Ei "aarch64|arm64"
+
+          file toolchain-build/toolchain/jdk/bin/java \
+            | grep -Ei "aarch64|arm64"
+
+      - name: Prepare Java tools
+        run: |
+          set -eux
+
+          mkdir -p toolchain-build/toolchain/lib
+
+          curl -L --fail --retry 5 \
+            "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" \
+            -o /tmp/cmdline-tools.zip
+
+          mkdir -p /tmp/cmdline
+
+          unzip -q /tmp/cmdline-tools.zip \
+            -d /tmp/cmdline
+
+          find /tmp/cmdline -type f -name d8.jar \
+            -exec cp {} toolchain-build/toolchain/lib/d8.jar \;
+
+          find /tmp/cmdline -type f -name apksigner.jar \
+            -exec cp {} toolchain-build/toolchain/lib/apksigner.jar \;
+
+          test -f toolchain-build/toolchain/lib/d8.jar
+          test -f toolchain-build/toolchain/lib/apksigner.jar
+
+      - name: Create d8 wrapper
+        run: |
+          set -eux
+
+          cat > toolchain-build/toolchain/d8 <<'D8EOF'
+          #!/system/bin/sh
+          HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          exec "$HERE/jdk/bin/java" -cp "$HERE/lib/d8.jar" com.android.tools.r8.D8 "$@"
+          D8EOF
+
+          chmod 755 toolchain-build/toolchain/d8
+
+      - name: Create apksigner wrapper
+        run: |
+          set -eux
+
+          cat > toolchain-build/toolchain/apksigner <<'APKEOF'
+          #!/system/bin/sh
+          HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          exec "$HERE/jdk/bin/java" -cp "$HERE/lib/apksigner.jar" com.android.apksigner.ApkSignerTool "$@"
+          APKEOF
+
+          chmod 755 toolchain-build/toolchain/apksigner
+
+      - name: Create metadata
+        run: |
+          set -eux
+
+          cat > toolchain-build/toolchain/TOOLCHAIN_INFO.txt <<'INFOEOF'
+          APKBuilder-v2 ARM64 Toolchain
+          ABI=arm64-v8a
+          Android API=35
+          JDK=17
+          Architecture=ARM64
+          INFOEOF
+
+      - name: Verify final layout
+        run: |
+          set -eux
+
+          test -x toolchain-build/toolchain/aapt2
+          test -x toolchain-build/toolchain/zipalign
+          test -x toolchain-build/toolchain/aidl
+          test -x toolchain-build/toolchain/d8
+          test -x toolchain-build/toolchain/apksigner
+          test -x toolchain-build/toolchain/jdk/bin/java
+
+          test -f toolchain-build/toolchain/lib/d8.jar
+          test -f toolchain-build/toolchain/lib/apksigner.jar
+          test -f toolchain-build/toolchain/TOOLCHAIN_INFO.txt
+
+          find toolchain-build/toolchain \
+            -maxdepth 3 \
+            -type f \
+            -print
+
+      - name: Create ZIP
+        run: |
+          set -eux
+
+          cd toolchain-build
+
+          zip -r -9 \
+            ../apkbuilder-toolchain-arm64.zip \
+            toolchain
+
+          cd ..
+
+          sha256sum \
+            apkbuilder-toolchain-arm64.zip \
+            > apkbuilder-toolchain-arm64.zip.sha256
+
+          ls -lh \
+            apkbuilder-toolchain-arm64.zip \
+            apkbuilder-toolchain-arm64.zip.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apkbuilder-toolchain-arm64
+          path: |
+            apkbuilder-toolchain-arm64.zip
+            apkbuilder-toolchain-arm64.zip.sha256
+          retention-days: 30
