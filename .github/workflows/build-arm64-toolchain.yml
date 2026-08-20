@@ -47,7 +47,7 @@ jobs:
           BASE="https://packages.termux.dev/apt/termux-main"
           DB="toolchain-build/work/termux/Packages"
 
-          for PKG in aapt2 zipalign apksigner openjdk-17; do
+          for PKG in aapt zipalign apksigner openjdk-17; do
 
             FILE="$(
               awk -v pkg="$PKG" '
