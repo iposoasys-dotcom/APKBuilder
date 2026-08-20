@@ -254,7 +254,6 @@ class IDEActivity : ComponentActivity() {
                                 status =
                                     e.message
                                         ?: "Unable to open build preview"
-                }
                                 Toast.makeText(
                                     this@IDEActivity,
                                     status,
