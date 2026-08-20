@@ -1,28 +1,16 @@
-name: APKBuilder v2 - Build APK
+name: APKBuilder v2 Build
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: apkbuilder-build-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build APKBuilder v2
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -30,79 +18,21 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK licenses
-        shell: bash
-        run: |
-          set -e
-          set +o pipefail
-          yes | sdkmanager --licenses >/tmp/sdk-licenses.log 2>&1
-          set -o pipefail
-          echo "Android SDK licenses accepted."
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Install Android SDK components
-        shell: bash
-        run: |
-          set -e
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Check project
-        shell: bash
-        run: |
-          set -e
-          echo "===== PROJECT ====="
-          pwd
-
-          echo "===== JAVA ====="
-          java -version
-
-          echo "===== GRADLE ====="
-          chmod +x ./gradlew
-          ./gradlew --version
-
-          echo "===== ANDROID SDK ====="
-          echo "$ANDROID_HOME"
-          sdkmanager --list_installed | head -80
-
-          echo "===== SOURCE FILES ====="
-          find app/src/main -type f | sort
-
-      - name: Clean build
-        run: ./gradlew clean --no-daemon
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
 
       - name: Build Debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verify APK
-        shell: bash
-        run: |
-          set -e
-          echo "===== GENERATED APK ====="
-          find app/build/outputs/apk -type f -name "*.apk" -print
-          test -n "$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
-
-      - name: Upload Debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: APKBuilder-v2-debug
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Build summary
-        if: always()
-        shell: bash
-        run: |
-          echo "## APKBuilder v2 Build" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Build finished with status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### APK files" >> "$GITHUB_STEP_SUMMARY"
-          find app/build/outputs/apk -type f -name "*.apk" -print >> "$GITHUB_STEP_SUMMARY" || true
+          path: app/build/outputs/apk/debug/app-debug.apk

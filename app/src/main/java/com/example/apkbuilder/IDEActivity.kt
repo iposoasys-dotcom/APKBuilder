@@ -46,6 +46,7 @@ import com.example.apkbuilder.editor.ProjectFile
 import com.example.apkbuilder.editor.ProjectManager
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class IDEActivity : ComponentActivity() {
@@ -253,13 +254,6 @@ class IDEActivity : ComponentActivity() {
                                 status =
                                     e.message
                                         ?: "Unable to open build preview"
-
-                if (result.state == com.example.apkbuilder.build.InstallState.SUCCESS || result.state == com.example.apkbuilder.build.InstallState.ALREADY_INSTALLED) {
-                    Toast.makeText(
-                        this@IDEActivity,
-                        "Toolchain installed. Rechecking device...",
-                        Toast.LENGTH_LONG
-                    ).show()
                 }
                                 Toast.makeText(
                                     this@IDEActivity,
