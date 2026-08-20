@@ -1,0 +1,218 @@
+name: Build ARM64 Android Toolchain
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-toolchain:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl unzip zip gzip dpkg
+
+      - name: Create directories
+        run: |
+          set -eux
+          rm -rf toolchain-build
+          mkdir -p toolchain-build/toolchain
+          mkdir -p toolchain-build/work/termux/debs
+
+      - name: Download ARM64 Termux package database
+        run: |
+          set -eux
+
+          BASE="https://packages.termux.dev/apt/termux-main"
+
+          curl -L --fail --retry 5 \
+            "$BASE/dists/stable/main/binary-aarch64/Packages.gz" \
+            -o toolchain-build/work/termux/Packages.gz
+
+          gzip -dc \
+            toolchain-build/work/termux/Packages.gz \
+            > toolchain-build/work/termux/Packages
+
+      - name: Download ARM64 packages
+        run: |
+          set -eux
+
+          BASE="https://packages.termux.dev/apt/termux-main"
+          DB="toolchain-build/work/termux/Packages"
+
+          for PKG in aapt2 zipalign apksigner openjdk-17; do
+
+            FILE="$(
+              awk -v pkg="$PKG" '
+                BEGIN {
+                  RS=""
+                  FS="\n"
+                }
+
+                $0 ~ "^Package: " pkg "$" {
+                  for (i=1; i<=NF; i++) {
+                    if ($i ~ /^Filename: /) {
+                      sub(/^Filename: /, "", $i)
+                      print $i
+                      exit
+                    }
+                  }
+                }
+              ' "$DB"
+            )"
+
+            if [ -z "$FILE" ]; then
+              echo "ERROR: package not found: $PKG"
+              exit 1
+            fi
+
+            echo "Downloading $PKG"
+            echo "Path: $FILE"
+
+            curl -L --fail --retry 5 \
+              "$BASE/$FILE" \
+              -o "toolchain-build/work/termux/debs/$(basename "$FILE")"
+
+          done
+
+      - name: Extract ARM64 packages
+        run: |
+          set -eux
+
+          PREFIX="$GITHUB_WORKSPACE/toolchain-build/toolchain"
+
+          mkdir -p "$PREFIX"
+          mkdir -p toolchain-build/work/extract
+
+          for DEB in toolchain-build/work/termux/debs/*.deb; do
+
+            rm -rf toolchain-build/work/extract/*
+            mkdir -p toolchain-build/work/extract
+
+            echo "Extracting $DEB"
+
+            dpkg-deb -x \
+              "$DEB" \
+              toolchain-build/work/extract
+
+            cp -a \
+              toolchain-build/work/extract/. \
+              "$PREFIX/"
+
+          done
+
+      - name: Download Android command line tools
+        run: |
+          set -eux
+
+          SDK="$GITHUB_WORKSPACE/toolchain-build/toolchain/sdk"
+
+          mkdir -p "$SDK"
+
+          curl -L --fail --retry 5 \
+            "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" \
+            -o toolchain-build/work/cmdline-tools.zip
+
+          mkdir -p toolchain-build/work/cmdline
+
+          unzip -q \
+            toolchain-build/work/cmdline-tools.zip \
+            -d toolchain-build/work/cmdline
+
+          mkdir -p "$SDK/cmdline-tools/latest"
+
+          cp -a \
+            toolchain-build/work/cmdline/cmdline-tools/. \
+            "$SDK/cmdline-tools/latest/"
+
+      - name: Install Android SDK
+        run: |
+          set -eux
+
+          SDK="$GITHUB_WORKSPACE/toolchain-build/toolchain/sdk"
+
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+            --sdk_root="$SDK" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Locate tools
+        run: |
+          set -eux
+
+          PREFIX="$GITHUB_WORKSPACE/toolchain-build/toolchain"
+
+          echo "===== ARM64 TOOLCHAIN ====="
+
+          find "$PREFIX" \
+            -type f \
+            \( \
+              -name aapt2 \
+              -o -name d8 \
+              -o -name zipalign \
+              -o -name apksigner \
+              -o -name java \
+            \) \
+            -print
+
+      - name: Make executables executable
+        run: |
+          set -eux
+
+          PREFIX="$GITHUB_WORKSPACE/toolchain-build/toolchain"
+
+          find "$PREFIX" \
+            -type f \
+            \( \
+              -name aapt2 \
+              -o -name d8 \
+              -o -name zipalign \
+              -o -name apksigner \
+              -o -name java \
+            \) \
+            -exec chmod 755 {} \;
+
+      - name: Create metadata
+        run: |
+          cat > toolchain-build/toolchain/TOOLCHAIN_INFO.txt <<INFO
+          APKBuilder-v2 ARM64 Toolchain
+          ABI=arm64-v8a
+          Android API=35
+          Target=Galaxy A04s
+          INFO
+
+      - name: Create ZIP
+        run: |
+          set -eux
+
+          cd toolchain-build
+
+          zip -r -9 \
+            ../apkbuilder-toolchain-arm64.zip \
+            toolchain
+
+          cd ..
+
+          sha256sum \
+            apkbuilder-toolchain-arm64.zip \
+            > apkbuilder-toolchain-arm64.zip.sha256
+
+          ls -lh \
+            apkbuilder-toolchain-arm64.zip \
+            apkbuilder-toolchain-arm64.zip.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apkbuilder-toolchain-arm64
+          path: |
+            apkbuilder-toolchain-arm64.zip
+            apkbuilder-toolchain-arm64.zip.sha256
+          retention-days: 30
