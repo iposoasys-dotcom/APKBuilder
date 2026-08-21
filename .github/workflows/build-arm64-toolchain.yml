@@ -1,18 +1,19 @@
 name: Build ARM64 APKBuilder Toolchain
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
     paths:
-      - .github/workflows/build-arm64-toolchain.yml
+      - ".github/workflows/build-arm64-toolchain.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-arm64-toolchain:
+  build:
+    name: Build real ARM64 toolchain
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 
@@ -27,7 +28,7 @@ jobs:
           path: termux-packages
           fetch-depth: 1
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           set -eux
           sudo apt-get update
@@ -46,7 +47,8 @@ jobs:
             ninja-build \
             python3 \
             python3-pip \
-            openjdk-17-jdk
+            openjdk-17-jdk \
+            binutils
 
       - name: Prepare Termux build environment
         working-directory: termux-packages
@@ -54,30 +56,30 @@ jobs:
           set -eux
           sudo ./scripts/setup-ubuntu.sh
 
-      - name: Build ARM64 aapt
+      - name: Build ARM64 aapt package
         working-directory: termux-packages
         run: |
           set -eux
           ./build-package.sh -a aarch64 -I aapt
 
-      - name: Locate ARM64 aapt package
+      - name: Locate generated ARM64 packages
         working-directory: termux-packages
         run: |
           set -eux
 
-          echo "===== GENERATED PACKAGES ====="
-          find output -type f -name '*.deb' -print
+          echo "===== ALL GENERATED PACKAGES ====="
+          find output -type f -name "*.deb" -print | sort
 
-          AAPT_DEB="$(find output -type f -name 'aapt_*.deb' -print -quit)"
+          AAPT_DEB="$(find output -type f -name "aapt_*.deb" -print -quit)"
 
           if [ -z "$AAPT_DEB" ]; then
-            echo "ERROR: ARM64 aapt package was not produced."
+            echo "ERROR: aapt ARM64 package was not generated."
             exit 1
           fi
 
           echo "AAPT_DEB=$AAPT_DEB" >> "$GITHUB_ENV"
 
-      - name: Extract ARM64 aapt
+      - name: Extract ARM64 native tools
         run: |
           set -eux
 
@@ -88,31 +90,62 @@ jobs:
             "termux-packages/$AAPT_DEB" \
             /tmp/aapt
 
-          AAPT="$(find /tmp/aapt -type f -name aapt -print -quit)"
-
-          if [ -z "$AAPT" ]; then
-            echo "ERROR: aapt executable was not found."
-            find /tmp/aapt -type f -print
-            exit 1
-          fi
+          echo "===== EXTRACTED FILES ====="
+          find /tmp/aapt -type f -print | sort
 
           mkdir -p toolchain/bin
 
-          cp "$AAPT" toolchain/bin/aapt
-          chmod +x toolchain/bin/aapt
+          AAPT="$(find /tmp/aapt -type f -name "aapt" -print -quit)"
+          AAPT2="$(find /tmp/aapt -type f -name "aapt2" -print -quit)"
+          AIDL="$(find /tmp/aapt -type f -name "aidl" -print -quit)"
 
-      - name: Verify ARM64 aapt
+          if [ -z "$AAPT" ]; then
+            echo "ERROR: aapt executable missing."
+            exit 1
+          fi
+
+          if [ -z "$AAPT2" ]; then
+            echo "ERROR: aapt2 executable missing."
+            exit 1
+          fi
+
+          if [ -z "$AIDL" ]; then
+            echo "ERROR: aidl executable missing."
+            exit 1
+          fi
+
+          cp "$AAPT" toolchain/bin/aapt
+          cp "$AAPT2" toolchain/bin/aapt2
+          cp "$AIDL" toolchain/bin/aidl
+
+          chmod +x \
+            toolchain/bin/aapt \
+            toolchain/bin/aapt2 \
+            toolchain/bin/aidl
+
+      - name: Verify ARM64 native binaries
         run: |
           set -eux
 
-          echo "===== AAPT FILE ====="
-          file toolchain/bin/aapt
+          for binary in \
+            toolchain/bin/aapt \
+            toolchain/bin/aapt2 \
+            toolchain/bin/aidl
+          do
+            echo "===== $binary ====="
+            file "$binary"
+            readelf -h "$binary" | grep -E "Class:|Machine:"
+            test -x "$binary"
+          done
 
-          echo "===== AAPT ELF HEADER ====="
-          readelf -h toolchain/bin/aapt
+          file toolchain/bin/aapt \
+            | grep -Ei "ARM aarch64|ARM64|AArch64"
 
-          file toolchain/bin/aapt | grep -Ei \
-            'ARM aarch64|ARM64|AArch64'
+          file toolchain/bin/aapt2 \
+            | grep -Ei "ARM aarch64|ARM64|AArch64"
+
+          file toolchain/bin/aidl \
+            | grep -Ei "ARM aarch64|ARM64|AArch64"
 
       - name: Download Android command line tools
         run: |
@@ -120,7 +153,6 @@ jobs:
 
           rm -rf /tmp/android-cmdline
           mkdir -p /tmp/android-cmdline
-
           cd /tmp/android-cmdline
 
           wget -q \
@@ -169,26 +201,29 @@ jobs:
 
           mkdir -p toolchain/java-tools
 
-          if [ -f "$BUILD_TOOLS/lib/d8.jar" ]; then
-            cp "$BUILD_TOOLS/lib/d8.jar" \
-              toolchain/java-tools/
-          fi
+          test -f "$BUILD_TOOLS/lib/d8.jar"
+          test -f "$BUILD_TOOLS/lib/apksigner.jar"
 
-          if [ -f "$BUILD_TOOLS/lib/apksigner.jar" ]; then
-            cp "$BUILD_TOOLS/lib/apksigner.jar" \
-              toolchain/java-tools/
-          fi
+          cp \
+            "$BUILD_TOOLS/lib/d8.jar" \
+            toolchain/java-tools/
 
-      - name: Create metadata
+          cp \
+            "$BUILD_TOOLS/lib/apksigner.jar" \
+            toolchain/java-tools/
+
+      - name: Create toolchain metadata
         run: |
           set -eux
 
           cat > toolchain/toolchain.properties <<'PROPS'
 name=APKBuilder ARM64 Toolchain
-version=4.0
+version=5.0
 architecture=arm64-v8a
 termux_arch=aarch64
 native_aapt=aarch64
+native_aapt2=aarch64
+native_aidl=aarch64
 android_api=35
 build_tools=35.0.0
 java=17
@@ -202,10 +237,17 @@ PROPS
           echo "===== TOOLCHAIN FILES ====="
           find toolchain -type f -print | sort
 
-          echo "===== NATIVE AAPT ====="
-          test -x toolchain/bin/aapt
+          echo "===== AAPT ====="
           file toolchain/bin/aapt
-          readelf -h toolchain/bin/aapt | grep -E 'Class:|Machine:'
+          readelf -h toolchain/bin/aapt | grep -E "Class:|Machine:"
+
+          echo "===== AAPT2 ====="
+          file toolchain/bin/aapt2
+          readelf -h toolchain/bin/aapt2 | grep -E "Class:|Machine:"
+
+          echo "===== AIDL ====="
+          file toolchain/bin/aidl
+          readelf -h toolchain/bin/aidl | grep -E "Class:|Machine:"
 
           echo "===== ANDROID PLATFORM ====="
           test -f toolchain/sdk/platforms/android-35/android.jar
@@ -213,6 +255,12 @@ PROPS
           echo "===== JAVA ====="
           test -x toolchain/jdk/bin/java
           toolchain/jdk/bin/java -version
+
+          echo "===== D8 ====="
+          test -f toolchain/java-tools/d8.jar
+
+          echo "===== APKSIGNER ====="
+          test -f toolchain/java-tools/apksigner.jar
 
           echo "===== METADATA ====="
           cat toolchain/toolchain.properties
