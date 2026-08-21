@@ -132,8 +132,6 @@ jobs:
           test -f "$BUILD_TOOLS/lib/d8.jar"
           test -f "$BUILD_TOOLS/lib/apksigner.jar"
 
-          cp "$BUILD_TOOLS/lib/d8.jar" toolchain/java-tools/d8.jar
-          cp "$BUILD_TOOLS/lib/apksigner.jar" toolchain/java-tools/apksigner.jar
 
       - name: Create toolchain metadata
         run: |
@@ -187,10 +185,10 @@ jobs:
           test -f toolchain/sdk/platforms/android-35/android.jar
 
           echo "===== D8 ====="
-            toolchain/java-tools/d8.jar
+          test -f toolchain/java-tools/d8.jar
 
           echo "===== APKSIGNER ====="
-            toolchain/java-tools/apksigner.jar
+          test -f toolchain/java-tools/apksigner.jar
 
           echo "===== METADATA ====="
           cat toolchain/toolchain.properties
