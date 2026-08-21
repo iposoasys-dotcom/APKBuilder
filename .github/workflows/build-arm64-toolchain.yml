@@ -54,18 +54,18 @@ jobs:
           set -eux
           sudo ./scripts/setup-ubuntu.sh
 
-      - name: Build ARM64 aapt package
+      - name: Build ARM64 aapt
         working-directory: termux-packages
         run: |
           set -eux
           ./build-package.sh -a aarch64 -I aapt
 
-      - name: Locate ARM64 packages
+      - name: Locate ARM64 aapt package
         working-directory: termux-packages
         run: |
           set -eux
 
-          echo "===== PACKAGES ====="
+          echo "===== GENERATED PACKAGES ====="
           find output -type f -name '*.deb' -print
 
           AAPT_DEB="$(find output -type f -name 'aapt_*.deb' -print -quit)"
@@ -91,7 +91,7 @@ jobs:
           AAPT="$(find /tmp/aapt -type f -name aapt -print -quit)"
 
           if [ -z "$AAPT" ]; then
-            echo "ERROR: aapt executable not found."
+            echo "ERROR: aapt executable was not found."
             find /tmp/aapt -type f -print
             exit 1
           fi
@@ -105,8 +105,10 @@ jobs:
         run: |
           set -eux
 
-          echo "===== AAPT ====="
+          echo "===== AAPT FILE ====="
           file toolchain/bin/aapt
+
+          echo "===== AAPT ELF HEADER ====="
           readelf -h toolchain/bin/aapt
 
           file toolchain/bin/aapt | grep -Ei \
@@ -134,7 +136,7 @@ jobs:
             cmdline-tools/. \
             "$GITHUB_WORKSPACE/toolchain/sdk/cmdline-tools/latest/"
 
-      - name: Install Android API 35
+      - name: Install Android API 35 and Build Tools
         env:
           ANDROID_HOME: ${{ github.workspace }}/toolchain/sdk
           ANDROID_SDK_ROOT: ${{ github.workspace }}/toolchain/sdk
@@ -159,20 +161,22 @@ jobs:
             /usr/lib/jvm/java-17-openjdk-amd64/. \
             toolchain/jdk/
 
-      - name: Add Java build components
+      - name: Add Android Java build tools
         run: |
           set -eux
 
-          mkdir -p toolchain/java-tools
-
           BUILD_TOOLS="$GITHUB_WORKSPACE/toolchain/sdk/build-tools/35.0.0"
 
+          mkdir -p toolchain/java-tools
+
           if [ -f "$BUILD_TOOLS/lib/d8.jar" ]; then
-            cp "$BUILD_TOOLS/lib/d8.jar" toolchain/java-tools/
+            cp "$BUILD_TOOLS/lib/d8.jar" \
+              toolchain/java-tools/
           fi
 
           if [ -f "$BUILD_TOOLS/lib/apksigner.jar" ]; then
-            cp "$BUILD_TOOLS/lib/apksigner.jar" toolchain/java-tools/
+            cp "$BUILD_TOOLS/lib/apksigner.jar" \
+              toolchain/java-tools/
           fi
 
       - name: Create metadata
@@ -181,7 +185,7 @@ jobs:
 
           cat > toolchain/toolchain.properties <<'PROPS'
 name=APKBuilder ARM64 Toolchain
-version=3.0
+version=4.0
 architecture=arm64-v8a
 termux_arch=aarch64
 native_aapt=aarch64
@@ -191,7 +195,7 @@ java=17
 build_mode=on-device
 PROPS
 
-      - name: Verify toolchain
+      - name: Verify complete toolchain
         run: |
           set -eux
 
@@ -199,8 +203,16 @@ PROPS
           find toolchain -type f -print | sort
 
           echo "===== NATIVE AAPT ====="
+          test -x toolchain/bin/aapt
           file toolchain/bin/aapt
           readelf -h toolchain/bin/aapt | grep -E 'Class:|Machine:'
+
+          echo "===== ANDROID PLATFORM ====="
+          test -f toolchain/sdk/platforms/android-35/android.jar
+
+          echo "===== JAVA ====="
+          test -x toolchain/jdk/bin/java
+          toolchain/jdk/bin/java -version
 
           echo "===== METADATA ====="
           cat toolchain/toolchain.properties
@@ -218,8 +230,8 @@ PROPS
           echo "===== FINAL ZIP ====="
           ls -lh APKBuilder-v2-arm64-toolchain.zip
 
-          unzip -t \
-            APKBuilder-v2-arm64-toolchain.zip
+          echo "===== ZIP TEST ====="
+          unzip -t APKBuilder-v2-arm64-toolchain.zip
 
       - name: Upload ARM64 toolchain
         uses: actions/upload-artifact@v4
