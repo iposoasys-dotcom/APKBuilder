@@ -6,199 +6,39 @@ on:
     branches:
       - main
     paths:
-      - .github/workflows/build-arm64-toolchain.yml
+      - ".github/workflows/build-arm64-toolchain.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-arm64-toolchain:
+  test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
 
     steps:
-      - name: Checkout APKBuilder
-        uses: actions/checkout@v4
-
-      - name: Checkout Termux packages
-        uses: actions/checkout@v4
-        with:
-          repository: termux/termux-packages
-          path: termux-packages
-          fetch-depth: 1
-
-      - name: Install build dependencies
+      - name: Test GitHub Actions runner
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            clang \
-            cmake \
-            ninja-build \
-            python3 \
-            python3-pip \
-            unzip \
-            zip \
-            wget \
-            curl \
-            file \
-            jq \
-            patchelf \
-            rsync \
-            openjdk-17-jdk
+          set -eux
+          echo "GitHub ARM64 toolchain workflow started"
+          uname -a
+          uname -m
+          file /bin/bash
 
-      - name: Configure Termux build environment
-        working-directory: termux-packages
+      - name: Create test artifact
         run: |
-          sudo ./scripts/setup-ubuntu.sh
-
-      - name: Build ARM64 aapt
-        working-directory: termux-packages
-        run: |
-          set -e
-          ./build-package.sh -a aarch64 -I aapt
-
-      - name: Locate ARM64 aapt package
-        working-directory: termux-packages
-        run: |
-          set -e
-
-          echo "===== BUILD OUTPUT ====="
-          find output -type f -name '*.deb' -print
-
-          AAPT_DEB="$(find output -type f -name 'aapt_*.deb' -print -quit)"
-
-          if [ -z "$AAPT_DEB" ]; then
-            echo "ERROR: ARM64 aapt package was not produced."
-            exit 1
-          fi
-
-          echo "AAPT_DEB=$AAPT_DEB" >> "$GITHUB_ENV"
-
-      - name: Extract ARM64 aapt
-        run: |
-          set -e
-
-          rm -rf /tmp/aapt-extracted
-          mkdir -p /tmp/aapt-extracted
-
-          dpkg-deb -x "termux-packages/$AAPT_DEB" /tmp/aapt-extracted
-
-          AAPT="$(find /tmp/aapt-extracted -type f -name aapt -print -quit)"
-
-          if [ -z "$AAPT" ]; then
-            echo "ERROR: aapt executable was not found inside the package."
-            find /tmp/aapt-extracted -type f -print
-            exit 1
-          fi
-
           mkdir -p toolchain/bin
-          cp "$AAPT" toolchain/bin/aapt
-          chmod +x toolchain/bin/aapt
+          printf '%s\n' \
+            'name=APKBuilder ARM64 Toolchain' \
+            'architecture=arm64-v8a' \
+            'termux_arch=aarch64' \
+            'status=workflow-test' \
+            > toolchain/toolchain.properties
 
-          echo "===== ARM64 AAPT ====="
-          file toolchain/bin/aapt
-          readelf -h toolchain/bin/aapt | grep -E 'Class|Machine'
+          zip -r APKBuilder-v2-arm64-toolchain.zip toolchain
 
-      - name: Download Android command line tools
-        run: |
-          set -e
-
-          mkdir -p /tmp/android-tools
-          cd /tmp/android-tools
-
-          wget -q \
-            https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip \
-            -O commandlinetools.zip
-
-          unzip -q commandlinetools.zip
-
-          mkdir -p "$GITHUB_WORKSPACE/toolchain/sdk/cmdline-tools/latest"
-
-          cp -a \
-            cmdline-tools/. \
-            "$GITHUB_WORKSPACE/toolchain/sdk/cmdline-tools/latest/"
-
-      - name: Install Android SDK 35
-        env:
-          ANDROID_HOME: ${{ github.workspace }}/toolchain/sdk
-          ANDROID_SDK_ROOT: ${{ github.workspace }}/toolchain/sdk
-        run: |
-          set -e
-
-          yes | \
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            --licenses >/dev/null || true
-
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Add Java 17
-        run: |
-          set -e
-
-          mkdir -p toolchain/jdk
-
-          cp -a \
-            /usr/lib/jvm/java-17-openjdk-amd64/. \
-            toolchain/jdk/
-
-      - name: Add Java Android tools
-        run: |
-          set -e
-
-          mkdir -p toolchain/java-tools
-
-          cp \
-            toolchain/sdk/build-tools/35.0.0/lib/d8.jar \
-            toolchain/java-tools/ 2>/dev/null || true
-
-          cp \
-            toolchain/sdk/build-tools/35.0.0/lib/apksigner.jar \
-            toolchain/java-tools/ 2>/dev/null || true
-
-      - name: Create APKBuilder metadata
-        run: |
-          cat > toolchain/toolchain.properties <<'PROPS'
-name=APKBuilder ARM64 Toolchain
-version=1.0
-architecture=arm64-v8a
-termux_arch=aarch64
-android_api=35
-build_tools=35.0.0
-java=17
-native_aapt=aarch64
-PROPS
-
-      - name: Verify toolchain
-        run: |
-          set -e
-
-          echo "===== TOOLCHAIN ====="
-          find toolchain -maxdepth 4 -type f -print | sort
-
-          echo "===== AAPT ARCHITECTURE ====="
-          file toolchain/bin/aapt
-          readelf -h toolchain/bin/aapt | grep -E 'Class|Machine'
-
-          echo "===== METADATA ====="
-          cat toolchain/toolchain.properties
-
-      - name: Create ARM64 toolchain ZIP
-        run: |
-          set -e
-
-          zip -r -q \
-            APKBuilder-v2-arm64-toolchain.zip \
-            toolchain
-
-          echo "===== ZIP ====="
-          ls -lh APKBuilder-v2-arm64-toolchain.zip
-
-      - name: Upload ARM64 toolchain
+      - name: Upload test artifact
         uses: actions/upload-artifact@v4
         with:
           name: APKBuilder-v2-arm64-toolchain
           path: APKBuilder-v2-arm64-toolchain.zip
-          retention-days: 30
           if-no-files-found: error
