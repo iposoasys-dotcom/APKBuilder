@@ -68,8 +68,11 @@ jobs:
             "https://api.adoptium.net/v3/binary/latest/17/ga/linux/aarch64/jdk/hotspot/normal/eclipse" \
             -o arm64-jdk.tar.gz
 
+          rm -rf /tmp/arm64-jdk
           mkdir -p /tmp/arm64-jdk
-          tar -xzf arm64-jdk.tar.gz -C /tmp/arm64-jdk
+
+          tar -xzf arm64-jdk.tar.gz \
+            -C /tmp/arm64-jdk
 
           JDK_DIR="$(find /tmp/arm64-jdk -mindepth 1 -maxdepth 1 -type d | head -1)"
           test -n "$JDK_DIR"
@@ -84,6 +87,7 @@ jobs:
           file toolchain/jdk/bin/java
           readelf -h toolchain/jdk/bin/java | grep -E "Class:|Machine:"
           file toolchain/jdk/bin/java | grep -Ei "ARM aarch64|ARM64|AArch64"
+          test -x toolchain/jdk/bin/java
 
       - name: Download Android command line tools
         run: |
@@ -113,9 +117,7 @@ jobs:
         run: |
           set -eux
 
-          yes | \
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            --licenses >/dev/null || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
 
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-35" \
@@ -130,31 +132,28 @@ jobs:
           test -f "$BUILD_TOOLS/lib/d8.jar"
           test -f "$BUILD_TOOLS/lib/apksigner.jar"
 
-          cp "$BUILD_TOOLS/lib/d8.jar" \
-            toolchain/java-tools/d8.jar
-
-          cp "$BUILD_TOOLS/lib/apksigner.jar" \
-            toolchain/java-tools/apksigner.jar
+          cp "$BUILD_TOOLS/lib/d8.jar" toolchain/java-tools/d8.jar
+          cp "$BUILD_TOOLS/lib/apksigner.jar" toolchain/java-tools/apksigner.jar
 
       - name: Create toolchain metadata
         run: |
           set -eux
 
           cat > toolchain/toolchain.properties <<'PROPS'
-name=APKBuilder ARM64 Toolchain
-version=6.0
-architecture=arm64-v8a
-termux_arch=aarch64
-native_aapt2=aarch64
-native_aidl=aarch64
-native_zipalign=aarch64
-native_split_select=aarch64
-android_api=35
-build_tools=35.0.0
-java=17
-java_arch=aarch64
-build_mode=on-device
-PROPS
+          name=APKBuilder ARM64 Toolchain
+          version=6.0
+          architecture=arm64-v8a
+          termux_arch=aarch64
+          native_aapt2=aarch64
+          native_aidl=aarch64
+          native_zipalign=aarch64
+          native_split_select=aarch64
+          android_api=35
+          build_tools=35.0.0
+          java=17
+          java_arch=aarch64
+          build_mode=on-device
+          PROPS
 
       - name: Verify complete toolchain
         run: |
@@ -188,10 +187,10 @@ PROPS
           test -f toolchain/sdk/platforms/android-35/android.jar
 
           echo "===== D8 ====="
-          test -f toolchain/java-tools/d8.jar
+            toolchain/java-tools/d8.jar
 
           echo "===== APKSIGNER ====="
-          test -f toolchain/java-tools/apksigner.jar
+            toolchain/java-tools/apksigner.jar
 
           echo "===== METADATA ====="
           cat toolchain/toolchain.properties
