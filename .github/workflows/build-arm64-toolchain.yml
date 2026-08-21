@@ -1,209 +1,222 @@
-name: Build ARM64 Android Toolchain
+name: Build ARM64 APKBuilder Toolchain
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-arm64-toolchain.yml'
 
 permissions:
   contents: read
 
 jobs:
-  build-toolchain:
+  build-arm64-toolchain:
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout
+      - name: Checkout APKBuilder
         uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: Checkout Termux package sources
+        uses: actions/checkout@v4
+        with:
+          repository: termux/termux-packages
+          path: termux-packages
+          fetch-depth: 1
+
+      - name: Install ARM64 package build dependencies
+        working-directory: termux-packages
         run: |
-          set -eux
+          sudo ./scripts/setup-ubuntu.sh
           sudo apt-get update
-          sudo apt-get install -y curl unzip zip gzip file
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            python3 \
+            python3-pip \
+            unzip \
+            zip \
+            wget \
+            curl \
+            file \
+            jq \
+            patchelf \
+            rsync
 
-      - name: Create directories
+      - name: Build ARM64 aapt package
+        working-directory: termux-packages
+        env:
+          TERMUX_ARCH: aarch64
+          TERMUX_INSTALL_DEPS: true
         run: |
-          set -eux
-          rm -rf toolchain-build
-          mkdir -p toolchain-build/toolchain
-          mkdir -p toolchain-build/extract
+          ./build-package.sh -a aarch64 -I aapt
 
-      - name: Download ARM64 Android build tools
+      - name: Locate ARM64 aapt2 package
+        working-directory: termux-packages
         run: |
-          set -eux
-          BASE="https://github.com/Commit451/android-arm-build-tools/releases/download/35.0.0"
+          set -e
+          echo "Searching for ARM64 aapt2..."
+          find output -type f \( -name '*aapt2*.deb' -o -name '*aapt*.deb' \) -print
+          test -n "$(find output -type f -name '*aapt2*.deb' -print -quit)"
 
-          curl -L --fail --retry 5 \
-            "$BASE/build-tools-35.0.0-arm64-v8a.zip" \
-            -o /tmp/build-tools.zip
-
-          unzip -q /tmp/build-tools.zip \
-            -d toolchain-build/extract
-
-          find toolchain-build/extract -type f -name aapt2 \
-            -exec cp {} toolchain-build/toolchain/aapt2 \;
-
-          find toolchain-build/extract -type f -name zipalign \
-            -exec cp {} toolchain-build/toolchain/zipalign \;
-
-          find toolchain-build/extract -type f -name aidl \
-            -exec cp {} toolchain-build/toolchain/aidl \;
-
-          chmod 755 \
-            toolchain-build/toolchain/aapt2 \
-            toolchain-build/toolchain/zipalign \
-            toolchain-build/toolchain/aidl
-
-      - name: Download ARM64 JDK 17
+      - name: Prepare toolchain directory
         run: |
-          set -eux
+          set -e
 
-          mkdir -p toolchain-build/toolchain/jdk
+          rm -rf toolchain
+          mkdir -p toolchain/bin
+          mkdir -p toolchain/build-tools
+          mkdir -p toolchain/platform-tools
+          mkdir -p toolchain/sdk/platforms
+          mkdir -p toolchain/sdk/build-tools
 
-          curl -L --fail --retry 5 \
-            "https://api.adoptium.net/v3/binary/latest/17/ga/linux/aarch64/jdk/hotspot/normal/eclipse" \
-            -o /tmp/jdk.tar.gz
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk
 
-          mkdir -p /tmp/jdk
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> "$GITHUB_ENV"
 
-          tar -xzf /tmp/jdk.tar.gz \
-            -C /tmp/jdk
-
-          JDK_DIR="$(find /tmp/jdk -mindepth 1 -maxdepth 1 -type d | head -1)"
-
-          test -n "$JDK_DIR"
-
-          cp -a "$JDK_DIR"/. \
-            toolchain-build/toolchain/jdk/
-
-          chmod 755 \
-            toolchain-build/toolchain/jdk/bin/java
-
-      - name: Verify ARM64 native binaries
+      - name: Extract ARM64 aapt2
         run: |
-          set -eux
+          set -e
 
-          file toolchain-build/toolchain/aapt2
-          file toolchain-build/toolchain/zipalign
-          file toolchain-build/toolchain/aidl
-          file toolchain-build/toolchain/jdk/bin/java
+          DEB="$(find termux-packages/output -type f -name '*aapt2*.deb' -print -quit)"
 
-          file toolchain-build/toolchain/aapt2 \
-            | grep -Ei "aarch64|arm64"
+          if [ -z "$DEB" ]; then
+            echo "ERROR: ARM64 aapt2 package was not produced."
+            exit 1
+          fi
 
-          file toolchain-build/toolchain/zipalign \
-            | grep -Ei "aarch64|arm64"
+          mkdir -p /tmp/aapt2
+          dpkg-deb -x "$DEB" /tmp/aapt2
 
-          file toolchain-build/toolchain/aidl \
-            | grep -Ei "aarch64|arm64"
+          AAPT2="$(find /tmp/aapt2 -type f -name aapt2 -print -quit)"
 
-          file toolchain-build/toolchain/jdk/bin/java \
-            | grep -Ei "aarch64|arm64"
+          if [ -z "$AAPT2" ]; then
+            echo "ERROR: aapt2 executable not found."
+            find /tmp/aapt2 -type f | head -100
+            exit 1
+          fi
 
-      - name: Prepare Java tools
+          cp "$AAPT2" toolchain/bin/aapt2
+          chmod +x toolchain/bin/aapt2
+
+          file toolchain/bin/aapt2
+          readelf -h toolchain/bin/aapt2 | grep -E 'Class|Machine'
+
+      - name: Download Android command line tools
         run: |
-          set -eux
+          set -e
 
-          mkdir -p toolchain-build/toolchain/lib
+          mkdir -p /tmp/cmdline-tools
+          cd /tmp/cmdline-tools
 
-          curl -L --fail --retry 5 \
-            "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" \
-            -o /tmp/cmdline-tools.zip
+          wget -q \
+            https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip \
+            -O commandlinetools.zip
 
-          mkdir -p /tmp/cmdline
+          unzip -q commandlinetools.zip
+          mkdir -p "$GITHUB_WORKSPACE/toolchain/sdk/cmdline-tools/latest"
+          cp -a cmdline-tools/. \
+            "$GITHUB_WORKSPACE/toolchain/sdk/cmdline-tools/latest/"
 
-          unzip -q /tmp/cmdline-tools.zip \
-            -d /tmp/cmdline
-
-          find /tmp/cmdline -type f -name d8.jar \
-            -exec cp {} toolchain-build/toolchain/lib/d8.jar \;
-
-          find /tmp/cmdline -type f -name apksigner.jar \
-            -exec cp {} toolchain-build/toolchain/lib/apksigner.jar \;
-
-          test -f toolchain-build/toolchain/lib/d8.jar
-          test -f toolchain-build/toolchain/lib/apksigner.jar
-
-      - name: Create d8 wrapper
+      - name: Install Android SDK platform and build tools
+        env:
+          ANDROID_HOME: ${{ github.workspace }}/toolchain/sdk
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/toolchain/sdk
         run: |
-          set -eux
+          set -e
 
-          cat > toolchain-build/toolchain/d8 <<'D8EOF'
-          #!/system/bin/sh
-          HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-          exec "$HERE/jdk/bin/java" -cp "$HERE/lib/d8.jar" com.android.tools.r8.D8 "$@"
-          D8EOF
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
 
-          chmod 755 toolchain-build/toolchain/d8
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
-      - name: Create apksigner wrapper
+          cp -a "$ANDROID_HOME/platform-tools/." \
+            "$GITHUB_WORKSPACE/toolchain/platform-tools/" || true
+
+          cp -a "$ANDROID_HOME/build-tools/35.0.0/." \
+            "$GITHUB_WORKSPACE/toolchain/sdk/build-tools/35.0.0/"
+
+          cp -a "$ANDROID_HOME/platforms/android-35/." \
+            "$GITHUB_WORKSPACE/toolchain/sdk/platforms/android-35/"
+
+      - name: Add Java Android tools
         run: |
-          set -eux
+          set -e
 
-          cat > toolchain-build/toolchain/apksigner <<'APKEOF'
-          #!/system/bin/sh
-          HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-          exec "$HERE/jdk/bin/java" -cp "$HERE/lib/apksigner.jar" com.android.apksigner.ApkSignerTool "$@"
-          APKEOF
+          mkdir -p toolchain/jdk
 
-          chmod 755 toolchain-build/toolchain/apksigner
+          cp -a /usr/lib/jvm/java-17-openjdk-amd64/. \
+            toolchain/jdk/
 
-      - name: Create metadata
+          BUILD_TOOLS="toolchain/sdk/build-tools/35.0.0"
+
+          for tool in d8 apksigner zipalign aidl; do
+            if [ -f "$BUILD_TOOLS/$tool" ]; then
+              cp "$BUILD_TOOLS/$tool" "toolchain/bin/$tool"
+              chmod +x "toolchain/bin/$tool"
+            fi
+          done
+
+          if [ -f "$BUILD_TOOLS/r8" ]; then
+            cp "$BUILD_TOOLS/r8" toolchain/bin/r8
+            chmod +x toolchain/bin/r8
+          fi
+
+      - name: Remove incompatible x86_64 native binaries
         run: |
-          set -eux
+          set -e
 
-          cat > toolchain-build/toolchain/TOOLCHAIN_INFO.txt <<'INFOEOF'
-          APKBuilder-v2 ARM64 Toolchain
-          ABI=arm64-v8a
-          Android API=35
-          JDK=17
-          Architecture=ARM64
-          INFOEOF
+          find toolchain -type f \( \
+            -name 'aapt2' \
+            -o -name 'zipalign' \
+            -o -name 'aidl' \
+          \) -print
 
-      - name: Verify final layout
+          echo "Checking native binaries..."
+
+          for f in $(find toolchain -type f -perm -111); do
+            if file "$f" | grep -q ELF; then
+              echo "--- $f"
+              file "$f"
+            fi
+          done
+
+      - name: Create APKBuilder toolchain metadata
         run: |
-          set -eux
+          cat > toolchain/toolchain.properties <<'PROPS'
+name=APKBuilder ARM64 Toolchain
+version=1.0
+architecture=arm64-v8a
+termux_arch=aarch64
+android_api=35
+build_tools=35.0.0
+java=17
+native_target=aarch64
+PROPS
 
-          test -x toolchain-build/toolchain/aapt2
-          test -x toolchain-build/toolchain/zipalign
-          test -x toolchain-build/toolchain/aidl
-          test -x toolchain-build/toolchain/d8
-          test -x toolchain-build/toolchain/apksigner
-          test -x toolchain-build/toolchain/jdk/bin/java
-
-          test -f toolchain-build/toolchain/lib/d8.jar
-          test -f toolchain-build/toolchain/lib/apksigner.jar
-          test -f toolchain-build/toolchain/TOOLCHAIN_INFO.txt
-
-          find toolchain-build/toolchain \
-            -maxdepth 3 \
-            -type f \
-            -print
-
-      - name: Create ZIP
+      - name: Create toolchain ZIP
         run: |
-          set -eux
+          set -e
 
-          cd toolchain-build
+          chmod -R u+rwX toolchain
 
-          zip -r -9 \
-            ../apkbuilder-toolchain-arm64.zip \
+          zip -r -q \
+            APKBuilder-v2-arm64-toolchain.zip \
             toolchain
 
-          cd ..
+          ls -lh APKBuilder-v2-arm64-toolchain.zip
+          unzip -l APKBuilder-v2-arm64-toolchain.zip | head -100
 
-          sha256sum \
-            apkbuilder-toolchain-arm64.zip \
-            > apkbuilder-toolchain-arm64.zip.sha256
-
-          ls -lh \
-            apkbuilder-toolchain-arm64.zip \
-            apkbuilder-toolchain-arm64.zip.sha256
-
-      - name: Upload artifact
+      - name: Upload ARM64 toolchain
         uses: actions/upload-artifact@v4
         with:
-          name: apkbuilder-toolchain-arm64
-          path: |
-            apkbuilder-toolchain-arm64.zip
-            apkbuilder-toolchain-arm64.zip.sha256
+          name: APKBuilder-v2-arm64-toolchain
+          path: APKBuilder-v2-arm64-toolchain.zip
           retention-days: 30
+          if-no-files-found: error
