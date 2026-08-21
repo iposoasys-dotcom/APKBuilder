@@ -82,70 +82,33 @@ jobs:
       - name: Extract ARM64 native tools
         run: |
           set -eux
-
           rm -rf /tmp/aapt
           mkdir -p /tmp/aapt
-
-          dpkg-deb -x \
-            "termux-packages/$AAPT_DEB" \
-            /tmp/aapt
-
+          dpkg-deb -x "termux-packages/$AAPT_DEB" /tmp/aapt
           echo "===== EXTRACTED FILES ====="
           find /tmp/aapt -type f -print | sort
-
           mkdir -p toolchain/bin
-
-          AAPT="$(find /tmp/aapt -type f -name "aapt" -print -quit)"
-          AAPT2="$(find /tmp/aapt -type f -name "aapt2" -print -quit)"
-          AIDL="$(find /tmp/aapt -type f -name "aidl" -print -quit)"
-
-          if [ -z "$AAPT" ]; then
-            echo "ERROR: aapt executable missing."
-            exit 1
-          fi
-
-          if [ -z "$AAPT2" ]; then
-            echo "ERROR: aapt2 executable missing."
-            exit 1
-          fi
-
-          if [ -z "$AIDL" ]; then
-            echo "ERROR: aidl executable missing."
-            exit 1
-          fi
-
+          AAPT="$(find /tmp/aapt -type f -name aapt -print -quit)"
+          AAPT2="$(find /tmp/aapt -type f -name aapt2 -print -quit)"
+          AIDL="$(find /tmp/aapt -type f -name aidl -print -quit)"
+          test -n "$AAPT"
+          test -n "$AAPT2"
+          test -n "$AIDL"
           cp "$AAPT" toolchain/bin/aapt
           cp "$AAPT2" toolchain/bin/aapt2
           cp "$AIDL" toolchain/bin/aidl
-
-          chmod +x \
-            toolchain/bin/aapt \
-            toolchain/bin/aapt2 \
-            toolchain/bin/aidl
+          chmod 755 toolchain/bin/aapt toolchain/bin/aapt2 toolchain/bin/aidl
 
       - name: Verify ARM64 native binaries
         run: |
           set -eux
-
-          for binary in \
-            toolchain/bin/aapt \
-            toolchain/bin/aapt2 \
-            toolchain/bin/aidl
-          do
+          for binary in toolchain/bin/aapt toolchain/bin/aapt2 toolchain/bin/aidl; do
             echo "===== $binary ====="
             file "$binary"
             readelf -h "$binary" | grep -E "Class:|Machine:"
             test -x "$binary"
+            file "$binary" | grep -Ei "ARM aarch64|ARM64|AArch64"
           done
-
-          file toolchain/bin/aapt \
-            | grep -Ei "ARM aarch64|ARM64|AArch64"
-
-          file toolchain/bin/aapt2 \
-            | grep -Ei "ARM aarch64|ARM64|AArch64"
-
-          file toolchain/bin/aidl \
-            | grep -Ei "ARM aarch64|ARM64|AArch64"
 
       - name: Download Android command line tools
         run: |
