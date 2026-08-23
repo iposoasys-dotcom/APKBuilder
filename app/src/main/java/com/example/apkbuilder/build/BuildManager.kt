@@ -42,5 +42,4 @@ object BuildManager {
                 "32-bit Android detected. GitHub Actions build mode selected."
             }
         )
-    }
 }

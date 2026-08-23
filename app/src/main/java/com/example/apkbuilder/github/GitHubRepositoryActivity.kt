@@ -70,7 +70,7 @@ class GitHubRepositoryActivity : ComponentActivity() {
             message = "Loading repositories..."
 
             scope.launch {
-                val result =
+                            val result =
                     withContext(Dispatchers.IO) {
                         client.repositories.repositories()
                     }
@@ -239,7 +239,7 @@ class GitHubRepositoryActivity : ComponentActivity() {
 
                         scope.launch {
 
-                            val result =
+                            val result: Result<File> =
                                 withContext(Dispatchers.IO) {
 
                                     val beforeRuns =
