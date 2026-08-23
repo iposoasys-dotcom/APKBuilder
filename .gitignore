@@ -4,3 +4,7 @@ app/build/
 local.properties
 *.iml
 .idea/
+
+android-build-tools-arm64.tar.xz
+arm64-tools-test/
+gh
