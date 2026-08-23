@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.apkbuilder.editor.ProjectManager
+import com.example.apkbuilder.github.GitHubAccountActivity
+import com.example.apkbuilder.github.GitHubRepositoryActivity
 import java.io.File
 
 class ProjectLibraryActivity : ComponentActivity() {
@@ -99,10 +101,16 @@ class ProjectLibraryActivity : ComponentActivity() {
 
                 Button(
                     onClick = {
-                        finish()
+                        startActivity(
+                            Intent(
+                                this@ProjectLibraryActivity,
+                                MainActivity::class.java
+                            ).apply {
+                                putExtra("create_project", true)
+                            }
+                        )
                     },
-                    modifier =
-                        Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text("New Project")
                 }
@@ -116,6 +124,21 @@ class ProjectLibraryActivity : ComponentActivity() {
                         Modifier.weight(1f)
                 ) {
                     Text("Refresh")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        startActivity(
+                            Intent(
+                                this@ProjectLibraryActivity,
+                                GitHubRepositoryActivity::class.java
+                            )
+                        )
+                    },
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+                    Text("GitHub")
                 }
             }
 

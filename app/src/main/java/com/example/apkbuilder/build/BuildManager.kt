@@ -22,24 +22,25 @@ object BuildManager {
     fun is64BitDevice(): Boolean =
         Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
 
+    /**
+     * GitHub Actions is the default builder for all Android devices.
+     *
+     * This allows both 32-bit and 64-bit phones to build APKs without
+     * depending on the native Android CPU architecture.
+     */
     fun preferredMode(): BuildMode =
-        if (is64BitDevice()) BuildMode.ON_DEVICE
-        else BuildMode.GITHUB_ACTIONS
+        BuildMode.GITHUB_ACTIONS
 
     fun capability(): BuildCapability =
-        if (is64BitDevice()) {
-            BuildCapability(
-                BuildMode.ON_DEVICE,
-                true,
-                architecture(),
-                "64-bit Android detected. On-device build mode selected."
-            )
-        } else {
-            BuildCapability(
-                BuildMode.GITHUB_ACTIONS,
-                true,
-                architecture(),
+        BuildCapability(
+            mode = BuildMode.GITHUB_ACTIONS,
+            available = true,
+            architecture = architecture(),
+            message = if (is64BitDevice()) {
+                "64-bit Android detected. GitHub Actions build mode selected."
+            } else {
                 "32-bit Android detected. GitHub Actions build mode selected."
-            )
-        }
+            }
+        )
+    }
 }

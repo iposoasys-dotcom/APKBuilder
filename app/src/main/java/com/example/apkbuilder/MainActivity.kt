@@ -37,10 +37,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
-            MaterialTheme {
-                NewProjectScreen()
+        if (intent.getBooleanExtra("create_project", false)) {
+            setContent {
+                MaterialTheme {
+                    NewProjectScreen()
+                }
             }
+        } else {
+            startActivity(
+                Intent(this, ProjectLibraryActivity::class.java)
+            )
+            finish()
         }
     }
 
