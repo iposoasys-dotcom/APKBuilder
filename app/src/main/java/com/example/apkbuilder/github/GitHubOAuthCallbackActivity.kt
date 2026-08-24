@@ -3,8 +3,9 @@ package com.example.apkbuilder.github
 import android.app.Activity
 import android.os.Bundle
 import android.widget.Toast
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class GitHubOAuthCallbackActivity : Activity() {
 
@@ -75,7 +76,7 @@ class GitHubOAuthCallbackActivity : Activity() {
             .clear()
             .apply()
 
-        lifecycleScope.launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
 
             val exchange =
                 GitHubOAuthExchange()

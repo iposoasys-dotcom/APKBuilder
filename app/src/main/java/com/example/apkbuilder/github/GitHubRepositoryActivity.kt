@@ -240,7 +240,8 @@ class GitHubRepositoryActivity : ComponentActivity() {
                         scope.launch {
 
                             val result: Result<File> =
-                                withContext(Dispatchers.IO) {
+                                runCatching {
+                                      withContext(Dispatchers.IO) {
 
                                     val beforeRuns =
                                         client.repositories
@@ -416,6 +417,7 @@ class GitHubRepositoryActivity : ComponentActivity() {
                                     )
 
                                     destination
+                                  }
                                 }
 
                             result
