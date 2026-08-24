@@ -1,28 +1,21 @@
 package com.example.apkbuilder.github
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.os.Bundle
 import android.widget.Toast
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 
-class GitHubOAuthCallbackActivity : Activity() {
+class GitHubOAuthCallbackActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val uri = intent?.data
 
-        val code =
-            uri?.getQueryParameter("code")
-
-        val state =
-            uri?.getQueryParameter("state")
-
-        val error =
-            uri?.getQueryParameter("error")
+        val code = uri?.getQueryParameter("code")
+        val state = uri?.getQueryParameter("state")
+        val error = uri?.getQueryParameter("error")
 
         if (!error.isNullOrBlank()) {
             finishWithMessage(
@@ -38,28 +31,22 @@ class GitHubOAuthCallbackActivity : Activity() {
             return
         }
 
-        val preferences =
-            getSharedPreferences(
-                "github_oauth",
-                MODE_PRIVATE
-            )
+        val preferences = getSharedPreferences(
+            "github_oauth",
+            MODE_PRIVATE
+        )
 
-        val savedState =
-            preferences.getString(
-                "state",
-                null
-            )
+        val savedState = preferences.getString(
+            "state",
+            null
+        )
 
-        val codeVerifier =
-            preferences.getString(
-                "code_verifier",
-                null
-            )
+        val codeVerifier = preferences.getString(
+            "code_verifier",
+            null
+        )
 
-        if (
-            savedState.isNullOrBlank() ||
-            savedState != state
-        ) {
+        if (savedState.isNullOrBlank() || savedState != state) {
             finishWithMessage(
                 "GitHub OAuth state verification failed."
             )
@@ -77,39 +64,34 @@ class GitHubOAuthCallbackActivity : Activity() {
             .clear()
             .apply()
 
-        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+        lifecycleScope.launch {
 
-            val exchange =
-                GitHubOAuthExchange()
+            val exchange = GitHubOAuthExchange()
 
-            val tokenResult =
-                exchange.exchange(
-                    code = code,
-                    codeVerifier = codeVerifier
+            val tokenResult = exchange.exchange(
+                code = code,
+                codeVerifier = codeVerifier
+            )
+
+            val token = tokenResult.getOrElse {
+                finishWithMessage(
+                    it.message
+                        ?: "Could not obtain GitHub access token."
                 )
+                return@launch
+            }
 
-            val token =
-                tokenResult.getOrElse {
-                    finishWithMessage(
-                        it.message
-                            ?: "Could not obtain GitHub access token."
-                    )
-                    return@launch
-                }
+            val usernameResult = exchange.username(
+                token.accessToken
+            )
 
-            val usernameResult =
-                exchange.username(
-                    token.accessToken
+            val username = usernameResult.getOrElse {
+                finishWithMessage(
+                    it.message
+                        ?: "Could not read GitHub username."
                 )
-
-            val username =
-                usernameResult.getOrElse {
-                    finishWithMessage(
-                        it.message
-                            ?: "Could not read GitHub username."
-                    )
-                    return@launch
-                }
+                return@launch
+            }
 
             GitHubSessionStore(
                 this@GitHubOAuthCallbackActivity
